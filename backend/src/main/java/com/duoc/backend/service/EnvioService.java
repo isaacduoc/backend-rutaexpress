@@ -74,7 +74,29 @@ public class EnvioService {
                 EstadoEnvio.CREADO
         );
 
-        return envioRepository.save(envio);
+        Envio envioGuardado =
+                envioRepository.save(envio);
+
+        /*
+         * TEMPORALMENTE DESACTIVADO.
+         *
+         * Queremos comprobar si Kafka está
+         * causando la demora al crear envíos.
+         */
+
+        // ShipmentEvent evento =
+        //         new ShipmentEvent(
+        //                 envioGuardado.getId(),
+        //                 envioGuardado.getCodigoSeguimiento(),
+        //                 envioGuardado.getEstado(),
+        //                 LocalDateTime.now(),
+        //                 envioGuardado.getCorreoDestinatario(),
+        //                 envioGuardado.getServicio()
+        //         );
+
+        // kafkaProducer.enviarEvento(evento);
+
+        return envioGuardado;
     }
 
     public Envio obtenerPorId(Long id) {
@@ -106,8 +128,10 @@ public class EnvioService {
         Envio envio =
                 obtenerPorId(id);
 
-        // Regla de negocio:
-        // No permitir CREADO -> EN_RUTA directamente
+        /*
+         * Regla de negocio:
+         * no permitir CREADO -> EN_RUTA directamente.
+         */
         if (
                 nuevoEstado == EstadoEnvio.EN_RUTA
                 &&
@@ -120,8 +144,10 @@ public class EnvioService {
             );
         }
 
-        // Descontar capacidad del catálogo
-        // al aceptar el envío
+        /*
+         * Descontar capacidad del catálogo
+         * cuando el envío pasa a ACEPTADO.
+         */
         if (
                 nuevoEstado == EstadoEnvio.ACEPTADO
         ) {
@@ -155,20 +181,17 @@ public class EnvioService {
                 envioRepository.save(envio);
 
         /*
-         * TEMPORALMENTE DESACTIVADO
-         * para comprobar si RabbitMQ
-         * está provocando el error 500.
+         * RabbitMQ temporalmente desactivado.
          */
 
         // notificationPublisher
-        //        .enviarNotificacionCambioEstado(
-        //                envioActualizado
-        //        );
+        //         .enviarNotificacionCambioEstado(
+        //                 envioActualizado
+        //         );
 
         /*
-         * Creamos el evento igual,
-         * pero temporalmente NO lo enviamos
-         * a Kafka.
+         * Kafka ACTIVO para cambios de estado.
+         * Así podemos seguir probando Reportes.
          */
 
         ShipmentEvent evento =
@@ -181,13 +204,7 @@ public class EnvioService {
                         envioActualizado.getServicio()
                 );
 
-        /*
-         * TEMPORALMENTE DESACTIVADO
-         * para comprobar si Kafka
-         * está provocando el error 500.
-         */
-
-        // kafkaProducer.enviarEvento(evento);
+        kafkaProducer.enviarEvento(evento);
 
         return envioActualizado;
     }
