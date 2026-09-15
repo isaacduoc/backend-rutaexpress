@@ -22,10 +22,12 @@ public class EnvioService {
     private final RestTemplate restTemplate;
     private final KafkaProducer kafkaProducer;
 
-    public EnvioService(EnvioRepository envioRepository,
-                        NotificationPublisher notificationPublisher,
-                        RestTemplate restTemplate,
-                        KafkaProducer kafkaProducer) {
+    public EnvioService(
+            EnvioRepository envioRepository,
+            NotificationPublisher notificationPublisher,
+            RestTemplate restTemplate,
+            KafkaProducer kafkaProducer) {
+
         this.envioRepository = envioRepository;
         this.notificationPublisher = notificationPublisher;
         this.restTemplate = restTemplate;
@@ -33,92 +35,159 @@ public class EnvioService {
     }
 
     public Envio crearEnvio(CrearEnvioRequest datos) {
+
         Envio envio = new Envio();
 
         envio.setCodigoSeguimiento(
-                "REX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase()
+                "REX-" +
+                UUID.randomUUID()
+                        .toString()
+                        .substring(0, 8)
+                        .toUpperCase()
         );
 
-        envio.setCorreoRemitente(datos.getCorreoRemitente());
-        envio.setNombreDestinatario(datos.getNombreDestinatario());
-        envio.setCorreoDestinatario(datos.getCorreoDestinatario());
-        envio.setDireccionOrigen(datos.getDireccionOrigen());
-        envio.setDireccionDestino(datos.getDireccionDestino());
+        envio.setCorreoRemitente(
+                datos.getCorreoRemitente()
+        );
 
-        // Guardar el servicio seleccionado
-        envio.setServicio(datos.getServicio());
+        envio.setNombreDestinatario(
+                datos.getNombreDestinatario()
+        );
 
-        envio.setEstado(EstadoEnvio.CREADO);
+        envio.setCorreoDestinatario(
+                datos.getCorreoDestinatario()
+        );
+
+        envio.setDireccionOrigen(
+                datos.getDireccionOrigen()
+        );
+
+        envio.setDireccionDestino(
+                datos.getDireccionDestino()
+        );
+
+        envio.setServicio(
+                datos.getServicio()
+        );
+
+        envio.setEstado(
+                EstadoEnvio.CREADO
+        );
 
         return envioRepository.save(envio);
     }
 
     public Envio obtenerPorId(Long id) {
-        return envioRepository.findById(id)
+
+        return envioRepository
+                .findById(id)
                 .orElseThrow(() ->
-                        new RuntimeException("Envío no encontrado con ID: " + id));
+                        new RuntimeException(
+                                "Envío no encontrado con ID: " + id
+                        )
+                );
     }
 
-    public List<Envio> listarEnvios(EstadoEnvio estado) {
+    public List<Envio> listarEnvios(
+            EstadoEnvio estado) {
+
         if (estado != null) {
-            return envioRepository.findByEstado(estado);
+            return envioRepository
+                    .findByEstado(estado);
         }
 
         return envioRepository.findAll();
     }
 
-    public Envio cambiarEstado(Long id, EstadoEnvio nuevoEstado) {
+    public Envio cambiarEstado(
+            Long id,
+            EstadoEnvio nuevoEstado) {
 
-        Envio envio = obtenerPorId(id);
+        Envio envio =
+                obtenerPorId(id);
 
         // Regla de negocio:
-        // No se puede pasar a EN_RUTA sin haber sido ACEPTADO previamente
-        if (nuevoEstado == EstadoEnvio.EN_RUTA
-                && envio.getEstado() == EstadoEnvio.CREADO) {
+        // No permitir CREADO -> EN_RUTA directamente
+        if (
+                nuevoEstado == EstadoEnvio.EN_RUTA
+                &&
+                envio.getEstado() == EstadoEnvio.CREADO
+        ) {
 
             throw new IllegalArgumentException(
-                    "No se puede cambiar el estado a EN_RUTA sin haber sido ACEPTADO previamente."
+                    "No se puede cambiar el estado a EN_RUTA " +
+                    "sin haber sido ACEPTADO previamente."
             );
         }
 
-        // Regla de negocio:
-        // Descontar capacidad del catálogo al ACEPTAR el envío
-        if (nuevoEstado == EstadoEnvio.ACEPTADO) {
+        // Descontar capacidad del catálogo
+        // al aceptar el envío
+        if (
+                nuevoEstado == EstadoEnvio.ACEPTADO
+        ) {
 
             try {
 
                 String catalogUrl =
-                        "http://localhost:8083/api/catalog/services/1/descontar";
+                        "http://localhost:8083" +
+                        "/api/catalog/services/1/descontar";
 
-                restTemplate.put(catalogUrl, null);
+                restTemplate.put(
+                        catalogUrl,
+                        null
+                );
 
             } catch (Exception e) {
 
                 throw new RuntimeException(
-                        "No se pudo actualizar la capacidad en el servicio de catálogo: "
-                                + e.getMessage()
+                        "No se pudo actualizar la capacidad " +
+                        "en el servicio de catálogo: " +
+                        e.getMessage()
                 );
             }
         }
 
-        envio.setEstado(nuevoEstado);
-
-        Envio envioActualizado = envioRepository.save(envio);
-
-        // Disparar mensaje asíncrono a RabbitMQ
-        notificationPublisher.enviarNotificacionCambioEstado(envioActualizado);
-
-        // Publicar evento en Kafka
-        ShipmentEvent evento = new ShipmentEvent(
-                envioActualizado.getId(),
-                envioActualizado.getCodigoSeguimiento(),
-                envioActualizado.getEstado(),
-                LocalDateTime.now(),
-                envioActualizado.getCorreoDestinatario(),
-                envioActualizado.getServicio()
+        envio.setEstado(
+                nuevoEstado
         );
 
-        kafkaProducer.enviarEvento(evento);
+        Envio envioActualizado =
+                envioRepository.save(envio);
+
+        /*
+         * TEMPORALMENTE DESACTIVADO
+         * para comprobar si RabbitMQ
+         * está provocando el error 500.
+         */
+
+        // notificationPublisher
+        //        .enviarNotificacionCambioEstado(
+        //                envioActualizado
+        //        );
+
+        /*
+         * Creamos el evento igual,
+         * pero temporalmente NO lo enviamos
+         * a Kafka.
+         */
+
+        ShipmentEvent evento =
+                new ShipmentEvent(
+                        envioActualizado.getId(),
+                        envioActualizado.getCodigoSeguimiento(),
+                        envioActualizado.getEstado(),
+                        LocalDateTime.now(),
+                        envioActualizado.getCorreoDestinatario(),
+                        envioActualizado.getServicio()
+                );
+
+        /*
+         * TEMPORALMENTE DESACTIVADO
+         * para comprobar si Kafka
+         * está provocando el error 500.
+         */
+
+        // kafkaProducer.enviarEvento(evento);
 
         return envioActualizado;
     }
@@ -128,19 +197,39 @@ public class EnvioService {
             LocalDateTime from,
             LocalDateTime to) {
 
-        if (estado != null && from != null && to != null) {
+        if (
+                estado != null
+                &&
+                from != null
+                &&
+                to != null
+        ) {
 
-            return envioRepository.findByEstadoAndFechaCreacionBetween(
-                    estado, from, to
-            );
+            return envioRepository
+                    .findByEstadoAndFechaCreacionBetween(
+                            estado,
+                            from,
+                            to
+                    );
         }
 
         if (estado != null) {
-            return envioRepository.findByEstado(estado);
+
+            return envioRepository
+                    .findByEstado(estado);
         }
 
-        if (from != null && to != null) {
-            return envioRepository.findByFechaCreacionBetween(from, to);
+        if (
+                from != null
+                &&
+                to != null
+        ) {
+
+            return envioRepository
+                    .findByFechaCreacionBetween(
+                            from,
+                            to
+                    );
         }
 
         return envioRepository.findAll();
